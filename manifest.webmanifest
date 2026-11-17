@@ -1,0 +1,14 @@
+{
+  "name": "Controlar Academy",
+  "short_name": "Controlar",
+  "description": "Treinamento em prevenção de infecção e segurança do paciente por meio de jogos curtos.",
+  "lang": "pt-BR",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
