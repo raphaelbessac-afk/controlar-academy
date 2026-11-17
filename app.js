@@ -3,7 +3,10 @@
 // Lógica do jogo. O conteúdo fica em content.js.
 // ============================================================
 
-const CHAVE = "controlar-academy-v1";
+const CHAVE_BASE = "controlar-academy-v1";
+const CHAVE_MODO = "controlar-academy-modo";
+let CHAVE = null;          // definida ao entrar (por conta Google ou modo teste)
+let CONTA = null;          // { tipo: "google" | "teste", uid, nome, email, foto }
 const DICAS_INICIAIS = 2;
 const BONUS_TRILHA = 500;
 
@@ -21,8 +24,9 @@ function estadoNovo() {
     criadoEm: new Date().toISOString()
   };
 }
-let E = carregar();
+let E = estadoNovo();
 function carregar() {
+  if (!CHAVE) return estadoNovo();
   try {
     const s = JSON.parse(localStorage.getItem(CHAVE));
     if (s && typeof s === "object") return Object.assign(estadoNovo(), s);
@@ -30,6 +34,7 @@ function carregar() {
   return estadoNovo();
 }
 function salvar() {
+  if (!CHAVE) return;
   try { localStorage.setItem(CHAVE, JSON.stringify(E)); } catch (e) {}
 }
 
@@ -149,6 +154,68 @@ function botaoDica() {
 // ============================================================
 const TELAS = {};
 
+// ---------- entrada (login) ----------
+let entrando = false;
+TELAS.entrada = (estado) => {
+  const cfg = !!window.FIREBASE_CONFIG;
+  const carregando = estado === "carregando";
+  return `
+  <div class="topo" style="padding-bottom:30px"><div class="marca">Controlar Academy</div>
+    <h1>Treinamento em segurança, um jogo de cada vez</h1>
+    <p style="margin:0;opacity:.9">Prevenção de infecção e segurança do paciente em fases de 2 a 3 minutos.</p></div>
+  <main>
+    <div class="card centro" style="margin-top:8px">
+      <div class="grande" style="font-size:56px">🧼</div>
+      <h2 class="mt">Entre para começar</h2>
+      <p class="suave pequeno">Com sua conta Google, seu progresso, seus pontos e seu certificado ficam ligados a você.</p>
+      ${carregando ? `<p class="suave">Verificando seu acesso…</p>` : `
+      <button class="btn branco" data-a="loginGoogle" ${cfg && !entrando ? "" : "disabled"} style="gap:12px">
+        <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        ${entrando ? "Entrando…" : "Entrar com Google"}</button>
+      ${cfg ? "" : `<p class="pequeno suave mt" style="margin-bottom:0">Login com Google em configuração.</p>`}`}
+    </div>
+    ${carregando ? "" : `<button class="btn claro" data-a="modoTeste">Testar sem login</button>
+    <p class="pequeno suave centro" style="margin-top:8px">No modo teste, o progresso fica só neste aparelho.</p>`}
+    <div class="aviso mt">Protótipo para demonstração. O conteúdo ainda passa por validação técnica.</div>
+  </main>`;
+};
+
+function abrirConta(conta) {
+  CONTA = conta;
+  CHAVE = CHAVE_BASE + ":" + (conta.tipo === "google" ? conta.uid : "teste");
+  // migra o progresso do protótipo anterior (sem login) para o modo teste
+  if (conta.tipo === "teste" && !localStorage.getItem(CHAVE) && localStorage.getItem(CHAVE_BASE)) {
+    try { localStorage.setItem(CHAVE, localStorage.getItem(CHAVE_BASE)); } catch (e) {}
+  }
+  try { localStorage.setItem(CHAVE_MODO, conta.tipo); } catch (e) {}
+  E = carregar();
+  if (conta.tipo === "google" && E.perfil && !E.perfil.nome && conta.nome) E.perfil.nome = conta.nome;
+  if (E.perfil && E.perfil.apelido) ir("inicio");
+  else {
+    cad = { categoria: "Enfermeiro(a)", unidade: "CTI adulto" };
+    if (conta.tipo === "google" && conta.nome) cad.apelido = conta.nome.split(" ")[0];
+    ir("cadastro");
+  }
+}
+function sairConta() {
+  salvar();
+  CHAVE = null; CONTA = null; E = estadoNovo();
+  try { localStorage.removeItem(CHAVE_MODO); } catch (e) {}
+  ir("entrada");
+}
+// chamado por auth.js sempre que o estado do login muda
+window.caAoMudarLogin = (usuario) => {
+  entrando = false;
+  if (usuario) {
+    if (CONTA && CONTA.tipo === "google" && CONTA.uid === usuario.uid) return;
+    abrirConta({ tipo: "google", uid: usuario.uid, nome: usuario.displayName || "", email: usuario.email || "", foto: usuario.photoURL || "" });
+  } else if (!CONTA || CONTA.tipo === "google") {
+    if (localStorage.getItem(CHAVE_MODO) === "teste") abrirConta({ tipo: "teste" });
+    else { CHAVE = null; CONTA = null; ir("entrada"); }
+  }
+};
+window.caErroLogin = (msg) => { entrando = false; if (telaAtual === "entrada") ir("entrada"); toast(msg); };
+
 // ---------- cadastro ----------
 let cad = { categoria: "Enfermeiro(a)", unidade: "CTI adulto" };
 TELAS.cadastro = () => `
@@ -158,6 +225,7 @@ TELAS.cadastro = () => `
   <main>
     <div class="card">
       <h2>Crie seu perfil</h2>
+      ${CONTA?.tipo === "google" ? `<div class="linha pequeno suave">${CONTA.foto ? `<img src="${esc(CONTA.foto)}" alt="" width="28" height="28" style="border-radius:50%" referrerpolicy="no-referrer">` : "👤"}<span>Conectado como <b>${esc(CONTA.email)}</b></span></div>` : `<p class="pequeno suave" style="margin:0">Modo teste · sem login</p>`}
       <label for="apelido">Apelido no jogo</label>
       <input id="apelido" maxlength="20" placeholder="Ex.: Enf_Simone" value="${esc(cad.apelido ?? E.perfil?.apelido ?? "")}">
       <label>Categoria profissional</label>
@@ -167,7 +235,7 @@ TELAS.cadastro = () => `
       <p class="pequeno suave mt">Você vai disputar a sala com profissionais da mesma categoria e do mesmo nível.</p>
       <button class="btn coral mt" data-a="cadastrar">Começar</button>
     </div>
-    <div class="aviso">Protótipo para demonstração. Os dados ficam só neste aparelho e o conteúdo ainda passa por validação técnica.</div>
+    <div class="aviso">Protótipo para demonstração. O conteúdo ainda passa por validação técnica.</div>
   </main>`;
 
 // ---------- início ----------
@@ -477,6 +545,11 @@ TELAS.perfil = () => {
     <button class="btn claro" data-a="verVideo" data-volta="perfil">🎬 Vídeo instrutivo (ganhe 1 dica)</button>
     <button class="btn claro" data-a="ir" data-t="refs">📚 Referências e sobre o protótipo</button>
     <button class="btn branco" data-a="editarPerfil">✏️ Editar perfil</button>
+    <div class="card mt"><h3>Conta</h3>
+      ${CONTA?.tipo === "google" ? `<div class="linha">${CONTA.foto ? `<img src="${esc(CONTA.foto)}" alt="" width="40" height="40" style="border-radius:50%" referrerpolicy="no-referrer">` : "👤"}<div><b>${esc(CONTA.nome || E.perfil.apelido)}</b><div class="pequeno suave">${esc(CONTA.email)}</div></div></div>`
+        : `<p class="pequeno suave" style="margin:0">Modo teste, sem login. Entre com Google para ligar seu progresso à sua conta.</p>`}
+      <button class="btn branco mt" data-a="sair">${CONTA?.tipo === "google" ? "Sair da conta" : "Entrar com Google"}</button>
+    </div>
     <button class="btn branco" data-a="zerar">🗑️ Apagar meu progresso</button>
   </main>${nav("perfil")}`;
 };
@@ -595,11 +668,20 @@ function guardarApelidoDigitado() {
 A.cadastrar = () => {
   const ap = document.getElementById("apelido").value.trim();
   if (ap.length < 2) { toast("Escolha um apelido com pelo menos 2 letras."); return; }
-  const nome = E.perfil?.nome || "";
+  const nome = E.perfil?.nome || (CONTA?.tipo === "google" ? CONTA.nome : "") || "";
   E.perfil = { apelido: ap, categoria: cad.categoria, unidade: cad.unidade, nome };
   delete cad.apelido;
   ir("inicio");
   toast(`Bem-vindo(a), ${ap}! Você ganhou ${DICAS_INICIAIS} dicas para começar.`);
+};
+A.loginGoogle = () => {
+  if (!window.caLoginGoogle) { toast("Login com Google ainda não está disponível."); return; }
+  entrando = true; ir("entrada"); window.caLoginGoogle();
+};
+A.modoTeste = () => abrirConta({ tipo: "teste" });
+A.sair = () => {
+  if (CONTA?.tipo === "google" && window.caLogout) { salvar(); try { localStorage.removeItem(CHAVE_MODO); } catch (e) {} CONTA = null; window.caLogout(); }
+  else sairConta();
 };
 A.editarPerfil = () => { cad = { categoria: E.perfil.categoria, unidade: E.perfil.unidade, apelido: E.perfil.apelido }; ir("cadastro"); };
 A.zerar = () => {
@@ -757,5 +839,9 @@ document.addEventListener("click", e => {
 });
 
 // ---------- início ----------
-if (E.perfil && E.perfil.apelido) ir("inicio");
-else ir("cadastro");
+// Com Firebase configurado, auth.js decide (caAoMudarLogin). Sem ele, entra direto.
+if (window.FIREBASE_CONFIG) {
+  if (localStorage.getItem(CHAVE_MODO) === "teste") abrirConta({ tipo: "teste" });
+  else ir("entrada", "carregando");
+} else if (localStorage.getItem(CHAVE_MODO) === "teste") abrirConta({ tipo: "teste" });
+else ir("entrada");
